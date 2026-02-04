@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Badge GIF Generator</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <svg viewBox="0 0 23 23" width="24" height="24">
+                    <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
+                    <rect x="12" y="1" width="10" height="10" fill="#7fba00"/>
+                    <rect x="1" y="12" width="10" height="10" fill="#00a4ef"/>
+                    <rect x="12" y="12" width="10" height="10" fill="#ffb900"/>
+                </svg>
+                <h1>Badge GIF Generator</h1>
+            </div>
+            <p class="tagline">Create animated GIFs from your certification badges</p>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div class="container-vertical">
+            <!-- Step 1: Select Badges from Library -->
+            <section class="card">
+                <div class="card-header">
+                    <span class="step-number">1</span>
+                    <h2>Select Badges from Library</h2>
+                </div>
+                <div class="card-body">
+                    <div class="search-box">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                            <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                        </svg>
+                        <input type="text" id="badgeSearchInput" placeholder="Search badges by name...">
+                        <button class="clear-search" id="clearBadgeSearch" title="Clear search">&times;</button>
+                    </div>
+                    
+                    <!-- Category Tabs -->
+                    <div class="category-tabs" id="badgeCategoryTabs">
+                        <button class="category-tab active" data-category="all">
+                            <span class="category-icon">🏆</span>
+                            <span>All</span>
+                        </button>
+                    </div>
+                    
+                    <div class="library-grid" id="badgeLibraryGrid">
+                        <div class="loading-spinner">Loading badges...</div>
+                    </div>
+                    
+                    <!-- Upload or URL for Badges -->
+                    <div class="upload-section">
+                        <h4 class="upload-section-title">Or add your own badges:</h4>
+                        <div class="upload-options">
+                            <div class="upload-zone upload-zone-compact" id="uploadZoneBadges">
+                                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                                    <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+                                </svg>
+                                <span>Upload files</span>
+                                <input type="file" id="badgeInput" multiple accept="image/*" hidden>
+                            </div>
+                            <div class="url-input-wrapper">
+                                <input type="text" id="badgeUrlInput" placeholder="Or paste image URL...">
+                                <button class="btn btn-small" id="addBadgeUrlBtn">Add</button>
+                            </div>
+                        </div>
+                        <div class="uploaded-badges" id="uploadedBadges"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 2: Select Logos from Library -->
+            <section class="card">
+                <div class="card-header">
+                    <span class="step-number">2</span>
+                    <h2>Select Logos from Library</h2>
+                </div>
+                <div class="card-body">
+                    <div class="search-box">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                            <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                        </svg>
+                        <input type="text" id="logoSearchInput" placeholder="Search logos by name...">
+                        <button class="clear-search" id="clearLogoSearch" title="Clear search">&times;</button>
+                    </div>
+                    <div class="library-grid" id="logoLibraryGrid">
+                        <div class="loading-spinner">Loading logos...</div>
+                    </div>
+                    
+                    <!-- Upload or URL for Logos -->
+                    <div class="upload-section">
+                        <h4 class="upload-section-title">Or add your own logos:</h4>
+                        <div class="upload-options">
+                            <div class="upload-zone upload-zone-compact" id="uploadZoneLogos">
+                                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                                    <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+                                </svg>
+                                <span>Upload files</span>
+                                <input type="file" id="logoInput" multiple accept="image/*" hidden>
+                            </div>
+                            <div class="url-input-wrapper">
+                                <input type="text" id="logoUrlInput" placeholder="Or paste image URL...">
+                                <button class="btn btn-small" id="addLogoUrlBtn">Add</button>
+                            </div>
+                        </div>
+                        <div class="uploaded-badges" id="uploadedLogos"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 3: Configure Settings -->
+            <section class="card">
+                <div class="card-header">
+                    <span class="step-number">3</span>
+                    <h2>Configure Settings</h2>
+                </div>
+                <div class="card-body">
+                    <div class="settings-grid">
+                        <div class="setting-group">
+                            <label for="duration">Badge Duration (ms)</label>
+                            <input type="number" id="duration" value="1500" min="100" max="10000" step="100">
+                            <span class="setting-hint">How long each badge frame shows</span>
+                        </div>
+                        <div class="setting-group">
+                            <label for="logoDuration">Logo Duration (ms)</label>
+                            <input type="number" id="logoDuration" value="2500" min="100" max="10000" step="100">
+                            <span class="setting-hint">How long logo frames show</span>
+                        </div>
+                        <div class="setting-group">
+                            <label for="canvasSize">Canvas Size</label>
+                            <select id="canvasSize">
+                                <option value="320x180">320×180 (Email Signature)</option>
+                                <option value="400x225">400×225 (Small)</option>
+                                <option value="600x338">600×338 (Medium)</option>
+                                <option value="800x450">800×450 (Large)</option>
+                                <option value="custom">Custom...</option>
+                            </select>
+                        </div>
+                        <div class="setting-group custom-size" id="customSizeGroup" style="display: none;">
+                            <label for="customWidth">Custom Size</label>
+                            <div class="custom-size-inputs">
+                                <input type="number" id="customWidth" placeholder="Width" min="100" max="2000">
+                                <span>×</span>
+                                <input type="number" id="customHeight" placeholder="Height" min="100" max="2000">
+                            </div>
+                        </div>
+                        <div class="setting-group">
+                            <label for="groupSize">Badges Per Frame</label>
+                            <input type="number" id="groupSize" value="3" min="1" max="6">
+                            <span class="setting-hint">Number of badges shown together</span>
+                        </div>
+                        <div class="setting-group">
+                            <label for="backgroundColor">Background Color</label>
+                            <div class="color-input-wrapper">
+                                <input type="color" id="backgroundColorPicker" value="#FFFFFF">
+                                <input type="text" id="backgroundColor" value="#FFFFFF" pattern="^#[0-9A-Fa-f]{6}$">
+                            </div>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="transparentBg">
+                                <span>Transparent background</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 4: Preview & Reorder -->
+            <section class="card">
+                <div class="card-header">
+                    <span class="step-number">4</span>
+                    <h2>Preview & Reorder</h2>
+                </div>
+                <div class="card-body">
+                    <div class="selection-summary" id="selectionSummary">
+                        <p>Select badges and logos above to see a preview</p>
+                    </div>
+                    
+                    <p class="reorder-hint" id="reorderHint" style="display: none;">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                            <path d="M10 9h4V6h3l-5-5-5 5h3v3zm-1 1H6V7l-5 5 5 5v-3h3v-4zm14 2l-5-5v3h-3v4h3v3l5-5zm-9 3h-4v3H7l5 5 5-5h-3v-3z"/>
+                        </svg>
+                        Drag items to reorder the animation sequence
+                    </p>
+                    
+                    <div class="preview-area" id="previewArea">
+                        <div class="preview-placeholder">
+                            <svg viewBox="0 0 24 24" width="64" height="64" fill="currentColor" opacity="0.3">
+                                <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                            </svg>
+                            <p>Your selected items will appear here</p>
+                        </div>
+                    </div>
+                    
+                    <div class="action-buttons">
+                        <button class="btn btn-secondary" id="clearAllBtn">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                            </svg>
+                            Clear All
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 5: Generate & Download -->
+            <section class="card generate-card">
+                <div class="card-header">
+                    <span class="step-number">5</span>
+                    <h2>Generate & Download</h2>
+                </div>
+                <div class="card-body">
+                    <div class="generate-section">
+                        <button class="btn btn-primary btn-large" id="generateBtn" disabled>
+                            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                                <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                            </svg>
+                            Generate GIF
+                        </button>
+                        <p class="generate-hint">Click to create your animated badge GIF</p>
+                    </div>
+                    
+                    <!-- Result Area - appears after generation -->
+                    <div class="result-section" id="resultSection" style="display: none;">
+                        <h3>Your GIF is Ready!</h3>
+                        <div class="result-preview" id="resultPreview">
+                            <!-- Generated GIF will be shown here -->
+                        </div>
+                        <div class="result-actions">
+                            <a class="btn btn-primary btn-large" id="downloadBtn" download="badge_slideshow.gif">
+                                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                                    <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                                </svg>
+                                Download GIF
+                            </a>
+                            <button class="btn btn-secondary" id="createAnotherBtn">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                                    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                                </svg>
+                                Create Another
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <p>Generating your GIF...</p>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>Badge GIF Generator &copy; 2026 | Built with Azure and Claude</p>
+    </footer>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

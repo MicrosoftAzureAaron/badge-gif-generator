@@ -1,0 +1,9 @@
+# Badge GIF Generator - Offline Mode Dependencies
+
+# Core dependencies
+Pillow>=10.0.0
+Flask>=3.0.0
+Flask-Cors>=4.0.0
+
+# Development/testing
+pytest>=8.0.0
