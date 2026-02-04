@@ -2,6 +2,8 @@
 
 Create animated GIFs from your certification badges with a local web interface. This standalone version runs entirely on your machine without cloud dependencies.
 
+> ⚠️ **Disclaimer:** All certification badge images included are property of their respective copyright holders (Microsoft, AWS, Google, Cisco, CompTIA, AXELOS, etc.). This tool is for **personal, non-commercial use only**. See the [main README](../README.md#️-disclaimer) for full details.
+
 ## Features
 
 - **Web Interface**: Modern, user-friendly interface with drag-and-drop reordering

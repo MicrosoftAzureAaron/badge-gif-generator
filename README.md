@@ -95,6 +95,16 @@ cd azure-vm
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+## ⚠️ Disclaimer
+
+**Copyright Notice:** All certification badge images, logos, and trademarks included in this repository are the property of their respective copyright holders, including but not limited to Microsoft, Amazon Web Services, Google, Cisco, CompTIA, and AXELOS (ITIL). No ownership or affiliation is claimed by the repository author.
+
+**Non-Commercial Use Only:** This project is provided for **personal, educational, and non-commercial purposes only**. It is not intended for profit or commercial distribution. The badge images are included solely to demonstrate the functionality of the GIF generator tool.
+
+**Fair Use:** The use of these images is believed to constitute fair use for the purposes of education, personal portfolio creation, and software demonstration. If you are a rights holder and believe your content has been used inappropriately, please open an issue and it will be promptly addressed.
+
+**Your Responsibility:** Users are responsible for ensuring their use of generated GIFs complies with the terms of service and trademark guidelines of the respective certification providers.
+
 ## 🙏 Acknowledgments
 
 - Certification badge images are property of their respective organizations

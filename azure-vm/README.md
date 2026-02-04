@@ -2,6 +2,8 @@
 
 A web-based solution for creating animated GIF slideshows from certification badges and logos. Deployed on an Azure Linux VM with HTTPS via Let's Encrypt, pulling code directly from GitHub.
 
+> ⚠️ **Disclaimer:** All certification badge images are property of their respective copyright holders (Microsoft, AWS, Google, Cisco, CompTIA, AXELOS, etc.). This tool is for **personal, non-commercial use only**. See the [main README](../README.md#️-disclaimer) for full details.
+
 ## Architecture
 
 ```
