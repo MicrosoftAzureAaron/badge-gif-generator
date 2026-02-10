@@ -1,6 +1,7 @@
 /**
  * Badge GIF Generator - Frontend Application
  * Vertical Layout Version with Search and URL Upload
+ * @version 1.1.0
  */
 
 // Configuration

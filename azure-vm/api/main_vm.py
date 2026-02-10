@@ -1,6 +1,8 @@
 """
 Badge GIF Generator - FastAPI Web Server
 Serves both the API and static frontend
+
+Version: 1.1.0
 """
 
 import os
@@ -116,7 +118,7 @@ def download_blob(container_name: str, blob_name: str) -> bytes:
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "healthy", "version": "1.0.0"}
+    return {"status": "healthy", "version": "1.1.0"}
 
 
 @app.get("/api/list-assets")

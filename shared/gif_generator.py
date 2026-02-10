@@ -1,6 +1,8 @@
 """
 Core GIF generation logic - adapted from the offline CLI script.
 Provides reusable functions for creating animated GIFs from badge and logo images.
+
+Version: 1.1.0
 """
 
 from dataclasses import dataclass
