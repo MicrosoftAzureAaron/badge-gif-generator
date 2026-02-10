@@ -21,6 +21,8 @@ class GifConfig:
     duration: int = 1500
     logo_duration: int = 2500
     loop: int = 0
+    remove_white_bg: bool = False
+    white_threshold: int = 250  # Pixels with R,G,B all >= this are considered white
 
 
 DEFAULT_CONFIG = GifConfig()
@@ -139,10 +141,85 @@ def group_images(images: Sequence[Image.Image], group_size: int) -> List[List[Im
     return groups
 
 
-def load_image_from_bytes(image_data: bytes) -> Image.Image:
-    """Load an image from bytes and convert to RGBA."""
+def has_transparency(image: Image.Image) -> bool:
+    """
+    Check if an image has meaningful transparency.
+    
+    Returns True if the image has an alpha channel with non-fully-opaque pixels.
+    """
+    if image.mode != "RGBA":
+        return False
+    
+    # Get alpha channel
+    alpha = image.split()[3]
+    
+    # Check if any pixel is not fully opaque (255)
+    # We consider an image transparent if at least some pixels have alpha < 255
+    extrema = alpha.getextrema()
+    
+    # If min alpha is less than 255, there's some transparency
+    return extrema[0] < 255
+
+
+def remove_white_background(image: Image.Image, threshold: int = 250) -> Image.Image:
+    """
+    Remove white/near-white background from an image.
+    
+    Pixels where R, G, and B are all >= threshold are made transparent.
+    Uses edge detection to preserve anti-aliased edges.
+    
+    Args:
+        image: Input image in RGBA mode
+        threshold: Minimum value for R, G, B to consider a pixel as white (0-255)
+        
+    Returns:
+        Image with white background removed
+    """
+    if image.mode != "RGBA":
+        image = image.convert("RGBA")
+    
+    # Get pixel data
+    data = image.getdata()
+    new_data = []
+    
+    for pixel in data:
+        r, g, b, a = pixel
+        
+        # Check if pixel is white/near-white
+        if r >= threshold and g >= threshold and b >= threshold:
+            # Make it fully transparent
+            new_data.append((r, g, b, 0))
+        else:
+            # Keep original pixel
+            new_data.append(pixel)
+    
+    # Create new image with modified data
+    result = Image.new("RGBA", image.size)
+    result.putdata(new_data)
+    
+    return result
+
+
+def load_image_from_bytes(image_data: bytes, remove_white_bg: bool = False, white_threshold: int = 250) -> Image.Image:
+    """
+    Load an image from bytes and convert to RGBA.
+    
+    Args:
+        image_data: Raw image bytes
+        remove_white_bg: If True, remove white background from images without transparency
+        white_threshold: Threshold for white detection (0-255)
+        
+    Returns:
+        Image in RGBA mode, optionally with white background removed
+    """
     image = Image.open(BytesIO(image_data))
-    return image.convert("RGBA")
+    image = image.convert("RGBA")
+    
+    # If remove_white_bg is enabled and image doesn't already have transparency
+    if remove_white_bg and not has_transparency(image):
+        image = remove_white_background(image, white_threshold)
+    
+    return image
 
 
 def generate_gif(
@@ -250,6 +327,12 @@ def generate_gif_from_bytes(
     Returns:
         The generated GIF as bytes
     """
-    badge_images = [load_image_from_bytes(data) for data in badge_data]
-    logo_images = [load_image_from_bytes(data) for data in logo_data]
+    badge_images = [
+        load_image_from_bytes(data, config.remove_white_bg, config.white_threshold) 
+        for data in badge_data
+    ]
+    logo_images = [
+        load_image_from_bytes(data, config.remove_white_bg, config.white_threshold) 
+        for data in logo_data
+    ]
     return generate_gif(badge_images, logo_images, config)

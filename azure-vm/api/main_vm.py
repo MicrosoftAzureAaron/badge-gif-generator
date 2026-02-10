@@ -200,6 +200,7 @@ async def generate_gif_endpoint(
     background: str = Form("#FFFFFF"),
     groupSize: int = Form(3),
     loop: int = Form(0),
+    removeWhiteBg: bool = Form(False),
     badges: List[UploadFile] = File(default=[]),
     logos: List[UploadFile] = File(default=[]),
     selectedBadges: str = Form("[]"),
@@ -223,7 +224,8 @@ async def generate_gif_endpoint(
             group_size=groupSize,
             duration=duration,
             logo_duration=logoDuration,
-            loop=loop
+            loop=loop,
+            remove_white_bg=removeWhiteBg
         )
 
         # Read all uploaded files first (before we process ordering)

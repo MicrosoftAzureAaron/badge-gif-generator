@@ -84,6 +84,7 @@ const elements = {
     backgroundColorPicker: document.getElementById('backgroundColorPicker'),
     backgroundColor: document.getElementById('backgroundColor'),
     transparentBg: document.getElementById('transparentBg'),
+    removeWhiteBg: document.getElementById('removeWhiteBg'),
     
     // Preview & Generate
     selectionSummary: document.getElementById('selectionSummary'),
@@ -576,6 +577,7 @@ function getSettings() {
         size,
         background,
         groupSize: document.getElementById('groupSize').value,
+        removeWhiteBg: elements.removeWhiteBg.checked,
     };
 }
 
@@ -798,6 +800,7 @@ async function generateGif() {
         formData.append('size', settings.size);
         formData.append('background', settings.background);
         formData.append('groupSize', settings.groupSize);
+        formData.append('removeWhiteBg', settings.removeWhiteBg);
 
         const orderedBadges = [];
         const orderedLogos = [];

@@ -94,6 +94,11 @@ def parse_arguments(argv: Iterable[str]) -> argparse.Namespace:
         help=f"Number of badges per slide (default: {DEFAULT_CONFIG.group_size}).",
     )
     parser.add_argument(
+        "--remove-white-bg",
+        action="store_true",
+        help="Remove white backgrounds from images that don't have transparency.",
+    )
+    parser.add_argument(
         "-y", "--yes",
         action="store_true",
         help="Skip confirmation prompt for large frame counts.",
@@ -109,6 +114,35 @@ def parse_color(color_text: str) -> tuple[int, int, int, int]:
         return color  # type: ignore[return-value]
     except Exception as exc:  # noqa: BLE001
         raise ValueError("Background color must be a valid Pillow color string.") from exc
+
+
+def has_transparency(image: Image.Image) -> bool:
+    """Check if an image has meaningful transparency."""
+    if image.mode != "RGBA":
+        return False
+    alpha = image.split()[3]
+    extrema = alpha.getextrema()
+    return extrema[0] < 255
+
+
+def remove_white_background(image: Image.Image, threshold: int = 250) -> Image.Image:
+    """Remove white/near-white background from an image."""
+    if image.mode != "RGBA":
+        image = image.convert("RGBA")
+    
+    data = image.getdata()
+    new_data = []
+    
+    for pixel in data:
+        r, g, b, a = pixel
+        if r >= threshold and g >= threshold and b >= threshold:
+            new_data.append((r, g, b, 0))
+        else:
+            new_data.append(pixel)
+    
+    result = Image.new("RGBA", image.size)
+    result.putdata(new_data)
+    return result
 
 
 def resolve_unique_path(path: Path) -> Path:
@@ -244,11 +278,16 @@ def create_frame_from_paths(
     size: tuple[int, int],
     background_color: tuple[int, int, int, int],
     padding: int,
+    remove_white_bg: bool = False,
 ) -> Image.Image:
     images: List[Image.Image] = []
     for image_path in group:
         with Image.open(image_path) as raw_image:
-            images.append(raw_image.convert("RGBA").copy())
+            img = raw_image.convert("RGBA").copy()
+            # Apply white background removal if enabled and image lacks transparency
+            if remove_white_bg and not has_transparency(img):
+                img = remove_white_background(img)
+            images.append(img)
     return compose_multi_badge_frame(images, size, background_color, padding)
 
 
@@ -257,10 +296,11 @@ def load_frames(
     size: tuple[int, int],
     background_color: tuple[int, int, int, int],
     padding: int,
+    remove_white_bg: bool = False,
 ) -> List[Image.Image]:
     frames: List[Image.Image] = []
     for group in grouped_paths:
-        frame = create_frame_from_paths(group, size, background_color, padding)
+        frame = create_frame_from_paths(group, size, background_color, padding, remove_white_bg)
         frames.append(frame)
     return frames
 
@@ -298,13 +338,13 @@ def main(argv: Iterable[str]) -> int:
         durations: List[int] = []
 
         if grouped_badges:
-            badge_frames = load_frames(grouped_badges, target_size, background_color, padding)
+            badge_frames = load_frames(grouped_badges, target_size, background_color, padding, args.remove_white_bg)
             frames.extend(badge_frames)
             durations.extend([args.duration] * len(badge_frames))
 
         if logo_paths:
             logo_groups = [[path] for path in logo_paths]
-            logo_frames = load_frames(logo_groups, target_size, background_color, padding)
+            logo_frames = load_frames(logo_groups, target_size, background_color, padding, args.remove_white_bg)
             frames.extend(logo_frames)
             durations.extend([args.logo_duration] * len(logo_frames))
 
