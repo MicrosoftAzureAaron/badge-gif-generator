@@ -24,11 +24,13 @@ echo "CERT_EMAIL: ${CERT_EMAIL:-not set}"
 echo "STORAGE_ACCOUNT_NAME: ${STORAGE_ACCOUNT_NAME:-not set}"
 echo "GITHUB_REPO: ${GITHUB_REPO:-not set}"
 echo "GITHUB_BRANCH: ${GITHUB_BRANCH:-main}"
+echo "ENABLE_AUTO_OS_UPDATES: ${ENABLE_AUTO_OS_UPDATES:-true}"
 echo "=========================================="
 
 # Default GitHub repo if not set
 GITHUB_REPO="${GITHUB_REPO:-https://github.com/MicrosoftAzureAaron/badge-gif-generator.git}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
+ENABLE_AUTO_OS_UPDATES="${ENABLE_AUTO_OS_UPDATES:-true}"
 
 # Update system
 echo "Updating system packages..."
@@ -46,7 +48,8 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
     curl \
     unzip \
     certbot \
-    python3-certbot-nginx
+    python3-certbot-nginx \
+    unattended-upgrades
 
 # Install Azure CLI
 echo "Installing Azure CLI..."
@@ -88,12 +91,13 @@ echo "Installing Python packages..."
 $APP_DIR/venv/bin/pip install --upgrade pip
 $APP_DIR/venv/bin/pip install -r $APP_DIR/api/requirements.txt
 
-# Ensure PYTHONPATH includes shared module
-echo 'PYTHONPATH="/opt/badge-gif-generator"' >> /etc/environment.d/badge-gif.conf
+# Ensure environment.d exists before writing application environment variables
+mkdir -p /etc/environment.d
 
-# Set storage account name in environment
+# Set application environment
 echo "Configuring environment..."
 cat > /etc/environment.d/badge-gif.conf << EOF
+PYTHONPATH=/opt/badge-gif-generator
 STORAGE_ACCOUNT_NAME=${STORAGE_ACCOUNT_NAME}
 EOF
 
@@ -257,6 +261,58 @@ else
     fi
 fi
 
+# Configure automatic OS updates if enabled
+echo "Configuring OS update automation..."
+if [ "$ENABLE_AUTO_OS_UPDATES" = "true" ]; then
+    echo "Enabling automatic security updates..."
+    
+    # Install and configure unattended-upgrades
+    apt-get install -y unattended-upgrades apt-listchanges
+    
+    # Configure unattended-upgrades for security updates only
+    cat > /etc/apt/apt.conf.d/50unattended-upgrades << 'UPGRADE_EOF'
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}-security";
+    "${distro_id}ESMApps:${distro_codename}-apps-security";
+    "${distro_id}ESM:${distro_codename}-infra-security";
+};
+
+// Automatically reboot on Sunday at 2 AM UTC if needed
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+Unattended-Upgrade::Automatic-Reboot-Time "02:00";
+Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+Unattended-Upgrade::MinimalSteps "true";
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Mail "root";
+Unattended-Upgrade::MailOnlyOnError "true";
+
+// Log updates
+Unattended-Upgrade::SyslogEnable "true";
+Unattended-Upgrade::SyslogFacility "daemon";
+UPGRADE_EOF
+    
+    # Enable automatic update checks
+    cat > /etc/apt/apt.conf.d/20auto-upgrades << 'AUTO_UPGRADE_EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Download-Upgradeable-Packages "1";
+APT::Periodic::AutocleanInterval "7";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::Verbose "1";
+AUTO_UPGRADE_EOF
+    
+    # Enable unattended-upgrades systemd timer
+    systemctl restart unattended-upgrades
+    systemctl enable unattended-upgrades
+    
+    echo "Automatic OS updates enabled (Sunday 2 AM UTC, security updates only)"
+    echo "To check update status: sudo systemctl status unattended-upgrades"
+else
+    echo "Automatic OS updates DISABLED (manual updates only)"
+    echo "To enable updates manually run: sudo apt-get update && sudo apt-get upgrade"
+fi
+
 echo "=========================================="
 echo "Setup Complete!"
 echo "Finished: $(date)"
@@ -272,4 +328,14 @@ echo "  sudo systemctl restart badge-gif-generator"
 echo ""
 echo "To setup HTTPS manually:"
 echo "  sudo certbot --nginx -d $CERT_DOMAIN --email your-email@example.com"
+echo ""
+echo "OS Update Status:"
+if [ "$ENABLE_AUTO_OS_UPDATES" = "true" ]; then
+    echo "  - Automatic security updates: ENABLED"
+    echo "  - Reboot schedule: Sunday 2 AM UTC"
+    echo "  - Check logs: sudo journalctl -u unattended-upgrades"
+else
+    echo "  - Automatic updates: DISABLED"
+    echo "  - Manual command: sudo apt-get update && sudo apt-get upgrade"
+fi
 echo "=========================================="
