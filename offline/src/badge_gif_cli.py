@@ -204,19 +204,10 @@ def group_badge_paths(badges: Sequence[Path], group_size: int) -> List[List[Path
     groups: List[List[Path]] = []
     index = 0
     total = len(badges)
-    while index + group_size <= total:
+    while index < total:
         groups.append(list(badges[index : index + group_size]))
         index += group_size
 
-    remainder = list(badges[index:])
-    if remainder:
-        pad_index = 0
-        while len(remainder) < group_size and badges:
-            remainder.append(badges[pad_index % len(badges)])
-            pad_index += 1
-        groups.append(remainder)
-    elif not groups and badges:
-        groups.append([badges[0]] * group_size)
     return groups
 
 

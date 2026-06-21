@@ -805,6 +805,7 @@ async function generateGif() {
 
         const orderedBadges = [];
         const orderedLogos = [];
+        const orderedItems = [];
         const uploadedBadgeFiles = [];
         const uploadedLogoFiles = [];
         const selectedBadgeFilenames = [];
@@ -814,6 +815,7 @@ async function generateGif() {
         for (const item of state.orderedItems) {
             if (item.type === 'badge') {
                 if (item.source === 'upload') {
+                    const uploadIndex = uploadedBadgeFiles.length;
                     if (item.data.file) {
                         formData.append('badges', item.data.file);
                     } else if (item.data.dataUrl) {
@@ -821,24 +823,29 @@ async function generateGif() {
                         const blob = await dataUrlToBlob(item.data.dataUrl);
                         formData.append('badges', blob, item.data.name);
                     }
-                    orderedBadges.push({ type: 'upload', index: uploadedBadgeFiles.length });
+                    orderedBadges.push({ type: 'upload', index: uploadIndex });
+                    orderedItems.push({ kind: 'badge', type: 'upload', index: uploadIndex });
                     uploadedBadgeFiles.push(item.data);
                 } else {
                     orderedBadges.push({ type: 'library', filename: item.data.filename });
+                    orderedItems.push({ kind: 'badge', type: 'library', filename: item.data.filename });
                     selectedBadgeFilenames.push(item.data.filename);
                 }
             } else {
                 if (item.source === 'upload') {
+                    const uploadIndex = uploadedLogoFiles.length;
                     if (item.data.file) {
                         formData.append('logos', item.data.file);
                     } else if (item.data.dataUrl) {
                         const blob = await dataUrlToBlob(item.data.dataUrl);
                         formData.append('logos', blob, item.data.name);
                     }
-                    orderedLogos.push({ type: 'upload', index: uploadedLogoFiles.length });
+                    orderedLogos.push({ type: 'upload', index: uploadIndex });
+                    orderedItems.push({ kind: 'logo', type: 'upload', index: uploadIndex });
                     uploadedLogoFiles.push(item.data);
                 } else {
                     orderedLogos.push({ type: 'library', filename: item.data.filename });
+                    orderedItems.push({ kind: 'logo', type: 'library', filename: item.data.filename });
                     selectedLogoFilenames.push(item.data.filename);
                 }
             }
@@ -846,6 +853,7 @@ async function generateGif() {
 
         formData.append('selectedBadges', JSON.stringify(selectedBadgeFilenames));
         formData.append('selectedLogos', JSON.stringify(selectedLogoFilenames));
+        formData.append('orderedItems', JSON.stringify(orderedItems));
         formData.append('orderedBadges', JSON.stringify(orderedBadges));
         formData.append('orderedLogos', JSON.stringify(orderedLogos));
 
@@ -855,8 +863,24 @@ async function generateGif() {
         });
 
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to generate GIF');
+            const contentType = response.headers.get('content-type') || '';
+            let errorMessage = `Failed to generate GIF (HTTP ${response.status})`;
+
+            if (contentType.includes('application/json')) {
+                const error = await response.json();
+                errorMessage = error.error || error.detail || errorMessage;
+            } else {
+                const text = await response.text();
+                if (text) {
+                    // Strip tags from HTML error pages to keep alerts readable.
+                    const cleanText = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                    if (cleanText) {
+                        errorMessage = `${errorMessage}: ${cleanText.slice(0, 200)}`;
+                    }
+                }
+            }
+
+            throw new Error(errorMessage);
         }
 
         const blob = await response.blob();

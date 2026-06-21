@@ -46,3 +46,23 @@ node_modules/
 .env
 .env.local
 offline/input/test-500mb.bin
+
+# Local operational notes (not for repo)
+COMPLETION_SUMMARY.md
+DEPLOYMENT_CHECKLIST.md
+IMPLEMENTATION_SUMMARY.md
+INFRASTRUCTURE_REDESIGN.md
+NETWORK_CONFIG_REFERENCE.md
+NETWORK_TESTING.md
+OPERATIONAL_UPDATES.md
+QUICK_REDEPLOY_GUIDE.md
+READINESS_STATUS.md
+SESSION_CHANGES.md
+SSH_KEY_CONFIGURATION.md
+WIREGUARD_CONFIG.md
+WIREGUARD_REDEPLOYMENT.md
+
+# Local/generated deployment artifacts
+temp_b64.txt
+azure-vm/infrastructure/main-vm-afd.bicepparam
+azure-vm/infrastructure/main-vm-afd.json

@@ -21,7 +21,7 @@ from PIL import Image
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from shared.gif_generator import GifConfig, generate_gif_from_bytes
+from shared.gif_generator import GifConfig, generate_gif_from_bytes, generate_gif_from_ordered_bytes
 
 # Configuration
 BASE_DIR = Path(__file__).parent.parent
@@ -192,49 +192,74 @@ def generate_gif():
         background = request.form.get("background", "#FFFFFF")
         group_size = int(request.form.get("groupSize", 3))
         
-        # Get ordered items
+        # Get ordered items (preferred path keeps combined drag/drop order)
+        ordered_items = json.loads(request.form.get("orderedItems", "[]"))
         ordered_badges = json.loads(request.form.get("orderedBadges", "[]"))
         ordered_logos = json.loads(request.form.get("orderedLogos", "[]"))
         
         # Get uploaded files
         uploaded_badges = request.files.getlist("badges")
         uploaded_logos = request.files.getlist("logos")
-        
-        # Collect badge images in order
-        badge_images = []
-        upload_badge_index = 0
-        
-        for item in ordered_badges:
-            if item["type"] == "upload":
-                if upload_badge_index < len(uploaded_badges):
-                    file = uploaded_badges[upload_badge_index]
-                    badge_images.append(file.read())
-                    upload_badge_index += 1
-            else:
-                # Library item - load from local folder
-                filename = item["filename"]
-                file_path = BADGES_FOLDER / filename
-                if file_path.exists():
-                    badge_images.append(file_path.read_bytes())
-        
-        # Collect logo images in order
-        logo_images = []
-        upload_logo_index = 0
-        
-        for item in ordered_logos:
-            if item["type"] == "upload":
-                if upload_logo_index < len(uploaded_logos):
-                    file = uploaded_logos[upload_logo_index]
-                    logo_images.append(file.read())
-                    upload_logo_index += 1
-            else:
-                # Library item - load from local folder
-                filename = item["filename"]
-                file_path = LOGOS_FOLDER / filename
-                if file_path.exists():
-                    logo_images.append(file_path.read_bytes())
-        
-        if not badge_images and not logo_images:
+
+        ordered_media = []
+
+        if ordered_items:
+            for item in ordered_items:
+                kind = item.get("kind")
+                source_type = item.get("type")
+
+                if kind not in ("badge", "logo"):
+                    continue
+
+                if source_type == "upload":
+                    try:
+                        upload_index = int(item.get("index", -1))
+                    except (TypeError, ValueError):
+                        upload_index = -1
+
+                    uploaded_list = uploaded_badges if kind == "badge" else uploaded_logos
+                    if 0 <= upload_index < len(uploaded_list):
+                        ordered_media.append((kind, uploaded_list[upload_index].read()))
+                elif source_type == "library":
+                    filename = item.get("filename")
+                    if not filename:
+                        continue
+                    file_path = (BADGES_FOLDER if kind == "badge" else LOGOS_FOLDER) / filename
+                    if file_path.exists() and file_path.is_file():
+                        ordered_media.append((kind, file_path.read_bytes()))
+        else:
+            # Fallback for older clients that still post orderedBadges/orderedLogos separately
+            for item in ordered_badges:
+                if item.get("type") == "upload":
+                    try:
+                        upload_idx = int(item.get("index", -1))
+                    except (TypeError, ValueError):
+                        upload_idx = -1
+                    if 0 <= upload_idx < len(uploaded_badges):
+                        ordered_media.append(("badge", uploaded_badges[upload_idx].read()))
+                elif item.get("type") == "library":
+                    filename = item.get("filename")
+                    if filename:
+                        file_path = BADGES_FOLDER / filename
+                        if file_path.exists() and file_path.is_file():
+                            ordered_media.append(("badge", file_path.read_bytes()))
+
+            for item in ordered_logos:
+                if item.get("type") == "upload":
+                    try:
+                        upload_idx = int(item.get("index", -1))
+                    except (TypeError, ValueError):
+                        upload_idx = -1
+                    if 0 <= upload_idx < len(uploaded_logos):
+                        ordered_media.append(("logo", uploaded_logos[upload_idx].read()))
+                elif item.get("type") == "library":
+                    filename = item.get("filename")
+                    if filename:
+                        file_path = LOGOS_FOLDER / filename
+                        if file_path.exists() and file_path.is_file():
+                            ordered_media.append(("logo", file_path.read_bytes()))
+
+        if not ordered_media:
             return jsonify({"error": "No valid images provided"}), 400
         
         # Parse size
@@ -255,7 +280,7 @@ def generate_gif():
             loop=0,
         )
         
-        gif_data = generate_gif_from_bytes(badge_images, logo_images, config)
+        gif_data = generate_gif_from_ordered_bytes(ordered_media, config)
         
         # Optionally save to output folder
         output_path = OUTPUT_DIR / "badge_slideshow.gif"
