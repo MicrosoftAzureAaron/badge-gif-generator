@@ -15,18 +15,25 @@ import logging
 import os
 import sys
 import json
+import re
+import hashlib
+import hmac
+import time
+from collections import defaultdict, deque
+from threading import Lock
 from io import BytesIO
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response, JSONResponse
 
 from azure.identity import DefaultAzureCredential
-from azure.storage.blob import BlobServiceClient, BlobSasPermissions, generate_blob_sas
+from azure.storage.blob import BlobServiceClient, BlobSasPermissions, ContentSettings, generate_blob_sas
 from azure.core.exceptions import AzureError
+from PIL import Image, UnidentifiedImageError
 
 # Add shared module to path (for VM deployment structure)
 APP_DIR = Path(__file__).parent.parent
@@ -63,12 +70,140 @@ BADGES_CONTAINER = "ms-badges"
 
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"})
 
+MAX_UPLOAD_FILE_SIZE_BYTES = 10 * 1024 * 1024
+MAX_UPLOAD_FILES_PER_REQUEST = 20
+MAX_IMAGE_DIMENSION = 5000
+SAFE_NAME_PATTERN = re.compile(r"[^a-z0-9._-]+")
+
+UPLOAD_API_KEY = os.environ.get("UPLOAD_API_KEY", "").strip()
+
+
+def _read_positive_int_env(name: str, default_value: int) -> int:
+    raw_value = os.environ.get(name, str(default_value)).strip()
+    try:
+        return max(1, int(raw_value))
+    except ValueError:
+        logger.warning(f"Invalid integer for {name}: {raw_value}. Falling back to {default_value}.")
+        return default_value
+
+
+UPLOAD_RATE_LIMIT_WINDOW_SECONDS = _read_positive_int_env("UPLOAD_RATE_LIMIT_WINDOW_SECONDS", 60)
+UPLOAD_RATE_LIMIT_MAX_REQUESTS = _read_positive_int_env("UPLOAD_RATE_LIMIT_MAX_REQUESTS", 20)
+
+_UPLOAD_RATE_STATE: Dict[str, deque] = defaultdict(deque)
+_UPLOAD_RATE_LOCK = Lock()
+
 # Standard response models
 class ErrorResponse:
     """Standard error response format."""
     def __init__(self, message: str, status_code: int = 400):
         self.message = message
         self.status_code = status_code
+
+
+def sanitize_blob_path(value: str) -> str:
+    trimmed = (value or '').strip().replace('\\', '/')
+    if not trimmed:
+        raise HTTPException(status_code=400, detail='Blob path is required.')
+    if '..' in trimmed or trimmed.startswith('/'):
+        raise HTTPException(status_code=400, detail='Invalid blob path.')
+    return trimmed
+
+
+def sanitize_optional_category(category: str) -> str:
+    if not category:
+        return ''
+    normalized = SAFE_NAME_PATTERN.sub('-', category.strip().lower())
+    normalized = normalized.strip('-._')
+    return normalized
+
+
+def sanitize_filename(filename: str) -> str:
+    original = Path(filename or '').name.lower().strip()
+    if not original:
+        raise HTTPException(status_code=400, detail='Filename is required.')
+
+    ext = Path(original).suffix.lower()
+    if ext not in IMAGE_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f'Unsupported file extension: {ext}')
+
+    stem = SAFE_NAME_PATTERN.sub('-', Path(original).stem.lower()).strip('-._')
+    if not stem:
+        raise HTTPException(status_code=400, detail='Filename is not valid after sanitization.')
+
+    return f'{stem}{ext}'
+
+
+def validate_image_bytes(content: bytes, filename: str) -> Dict[str, Any]:
+    if not content:
+        raise HTTPException(status_code=400, detail=f'Uploaded file is empty: {filename}')
+
+    if len(content) > MAX_UPLOAD_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail=f'File exceeds size limit: {filename}')
+
+    try:
+        with Image.open(BytesIO(content)) as image:
+            image.verify()
+        with Image.open(BytesIO(content)) as image:
+            width, height = image.size
+            image_format = (image.format or '').lower()
+    except UnidentifiedImageError as exc:
+        raise HTTPException(status_code=400, detail=f'File is not a valid image: {filename}') from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f'Failed to parse image: {filename}') from exc
+
+    if width <= 0 or height <= 0 or width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION:
+        raise HTTPException(status_code=400, detail=f'Image dimensions out of bounds: {filename}')
+
+    digest = hashlib.sha256(content).hexdigest()
+    return {
+        'width': width,
+        'height': height,
+        'format': image_format,
+        'sha256': digest
+    }
+
+
+def _get_api_key_candidate(authorization: Optional[str], x_api_key: Optional[str]) -> str:
+    bearer_token = ''
+    if authorization:
+        parts = authorization.strip().split(' ', 1)
+        if len(parts) == 2 and parts[0].lower() == 'bearer':
+            bearer_token = parts[1].strip()
+    return (x_api_key or bearer_token or '').strip()
+
+
+def enforce_upload_authentication(authorization: Optional[str], x_api_key: Optional[str]) -> str:
+    if not UPLOAD_API_KEY:
+        logger.error('UPLOAD_API_KEY environment variable is not configured; refusing upload request.')
+        raise HTTPException(status_code=503, detail='Upload API is not configured.')
+
+    presented_key = _get_api_key_candidate(authorization, x_api_key)
+    if not presented_key or not hmac.compare_digest(presented_key, UPLOAD_API_KEY):
+        raise HTTPException(status_code=401, detail='Invalid or missing API key.')
+
+    # Use a deterministic hash fragment so raw keys are never retained in memory/state.
+    return hashlib.sha256(presented_key.encode('utf-8')).hexdigest()[:16]
+
+
+def enforce_upload_rate_limit(client_id: str) -> None:
+    now = time.time()
+    window_start = now - UPLOAD_RATE_LIMIT_WINDOW_SECONDS
+
+    with _UPLOAD_RATE_LOCK:
+        events = _UPLOAD_RATE_STATE[client_id]
+        while events and events[0] < window_start:
+            events.popleft()
+
+        if len(events) >= UPLOAD_RATE_LIMIT_MAX_REQUESTS:
+            retry_after_seconds = max(1, int(events[0] + UPLOAD_RATE_LIMIT_WINDOW_SECONDS - now))
+            raise HTTPException(
+                status_code=429,
+                detail='Rate limit exceeded for upload API.',
+                headers={'Retry-After': str(retry_after_seconds)}
+            )
+
+        events.append(now)
 
 
 def get_blob_service_client() -> BlobServiceClient:
@@ -200,8 +335,7 @@ def download_blob(container_name: str, blob_name: str) -> bytes:
         AzureError: If blob download fails
         ValueError: If blob_name is empty or invalid
     """
-    if not blob_name:
-        raise ValueError("blob_name cannot be empty")
+    blob_name = sanitize_blob_path(blob_name)
     
     try:
         logger.debug(f"Downloading blob {blob_name} from {container_name}")
@@ -331,7 +465,8 @@ def get_asset(container: str, filename: str):
         raise HTTPException(status_code=404, detail="Container not found")
 
     try:
-        data = download_blob(container, filename)
+        safe_filename = sanitize_blob_path(filename)
+        data = download_blob(container, safe_filename)
         ext = os.path.splitext(filename)[1].lower()
         content_type = {
             ".png": "image/png",
@@ -427,11 +562,15 @@ async def generate_gif_endpoint(
 
         # Read all uploaded files
         logger.debug(f"Reading {len(badges)} badge uploads and {len(logos)} logo uploads")
+        if len(badges) > MAX_UPLOAD_FILES_PER_REQUEST or len(logos) > MAX_UPLOAD_FILES_PER_REQUEST:
+            raise HTTPException(status_code=400, detail='Too many files uploaded in one request.')
+
         uploaded_badge_contents = []
         for idx, f in enumerate(badges):
             try:
                 content = await f.read()
                 if content:
+                    validate_image_bytes(content, f.filename or f'badge_{idx}')
                     uploaded_badge_contents.append(content)
                     logger.debug(f"Read badge upload {idx}: {len(content)} bytes")
             except Exception as exc:
@@ -443,6 +582,7 @@ async def generate_gif_endpoint(
             try:
                 content = await f.read()
                 if content:
+                    validate_image_bytes(content, f.filename or f'logo_{idx}')
                     uploaded_logo_contents.append(content)
                     logger.debug(f"Read logo upload {idx}: {len(content)} bytes")
             except Exception as exc:
@@ -486,6 +626,7 @@ async def generate_gif_endpoint(
                         ordered_media.append((kind, uploaded_list[upload_index]))
                 elif source_type == "library" and item.get("filename"):
                     filename = item["filename"]
+                    filename = sanitize_blob_path(filename)
                     container = BADGES_CONTAINER if kind == "badge" else LOGOS_CONTAINER
                     try:
                         data = download_blob(container, filename)
@@ -536,6 +677,7 @@ async def generate_gif_endpoint(
             
             for filename in selected_badges:
                 try:
+                    filename = sanitize_blob_path(filename)
                     data = download_blob(BADGES_CONTAINER, filename)
                     badge_data.append(data)
                     logger.debug(f"Downloaded badge: {filename}")
@@ -570,6 +712,7 @@ async def generate_gif_endpoint(
             
             for filename in selected_logos:
                 try:
+                    filename = sanitize_blob_path(filename)
                     data = download_blob(LOGOS_CONTAINER, filename)
                     logo_data.append(data)
                     logger.debug(f"Downloaded logo: {filename}")
@@ -606,6 +749,78 @@ async def generate_gif_endpoint(
             status_code=500,
             content={"error": f"Failed to generate GIF: {str(exc)}", "type": type(exc).__name__}
         )
+
+
+@app.post('/api/upload-asset')
+async def upload_asset(
+    request: Request,
+    assetType: str = Form(...),
+    category: str = Form(''),
+    files: List[UploadFile] = File(...),
+    authorization: Optional[str] = Header(default=None),
+    x_api_key: Optional[str] = Header(default=None, alias='X-API-Key')
+) -> Dict[str, Any]:
+    key_fingerprint = enforce_upload_authentication(authorization, x_api_key)
+    client_host = request.client.host if request.client and request.client.host else 'unknown'
+    enforce_upload_rate_limit(f'{client_host}:{key_fingerprint}')
+
+    if assetType not in ('badge', 'logo'):
+        raise HTTPException(status_code=400, detail='assetType must be badge or logo.')
+
+    if len(files) == 0:
+        raise HTTPException(status_code=400, detail='At least one file is required.')
+
+    if len(files) > MAX_UPLOAD_FILES_PER_REQUEST:
+        raise HTTPException(status_code=400, detail='Too many files uploaded in one request.')
+
+    target_container = BADGES_CONTAINER if assetType == 'badge' else LOGOS_CONTAINER
+    safe_category = sanitize_optional_category(category)
+    blob_service = get_blob_service_client()
+    container_client = blob_service.get_container_client(target_container)
+
+    uploaded = []
+    rejected = []
+
+    for upload in files:
+        filename = sanitize_filename(upload.filename or '')
+        prefix = f'{safe_category}/' if safe_category else ''
+        blob_name = sanitize_blob_path(f'{prefix}{filename}')
+
+        content = await upload.read()
+        metadata = validate_image_bytes(content, filename)
+
+        blob_client = container_client.get_blob_client(blob_name)
+        if blob_client.exists():
+            rejected.append({'filename': upload.filename, 'reason': 'Blob already exists'})
+            continue
+
+        content_type = upload.content_type if (upload.content_type or '').startswith('image/') else 'application/octet-stream'
+        settings = ContentSettings(content_type=content_type)
+
+        blob_client.upload_blob(
+            content,
+            overwrite=False,
+            content_settings=settings,
+            metadata={
+                'sha256': metadata['sha256'],
+                'source': 'api-upload'
+            }
+        )
+
+        uploaded.append({
+            'filename': upload.filename,
+            'blobName': blob_name,
+            'size': len(content),
+            'sha256': metadata['sha256']
+        })
+
+    return {
+        'assetType': assetType,
+        'uploaded': uploaded,
+        'rejected': rejected,
+        'uploadedCount': len(uploaded),
+        'rejectedCount': len(rejected)
+    }
 
 
 # Serve static frontend files
