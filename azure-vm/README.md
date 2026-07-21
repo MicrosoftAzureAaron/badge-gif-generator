@@ -1,10 +1,15 @@
-# Badge GIF Generator - Azure VM Solution
+# Badge GIF Generator - Azure VM Reference
 
-A web-based solution for creating animated GIF slideshows from certification badges and logos. Deployed on an Azure Linux VM with HTTPS via Let's Encrypt, pulling code directly from GitHub.
+A reference Azure VM deployment for the badge GIF application. This folder is intended to store the app's VM-oriented code and a simple deployment flow used by the maintainer when adding new badges. It is not a complete or opinionated production blueprint for certificates, DNS, ingress, or network security.
 
 > ⚠️ **Disclaimer:** All certification badge images are property of their respective copyright holders (Microsoft, AWS, Google, Cisco, CompTIA, AXELOS, etc.). This tool is for **personal, non-commercial use only**. See the [main README](../README.md#️-disclaimer) for full details.
 
 ## Architecture
+
+Notes:
+- Certificates, domain names, public IPs, access control, Application Gateway, and Azure Front Door configuration are up to the end user.
+- The examples in this folder show one workable maintainer deployment path, not a required hosting model.
+- End users should substitute their own certificate, DNS, ingress, firewall, and traffic-management approach.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -164,9 +169,9 @@ Health check endpoint for monitoring.
 
 ## Deployment
 
-### VM Deployment (Recommended)
+### VM Deployment
 
-The recommended deployment method uses an Azure VM that pulls code directly from GitHub:
+The deployment in this folder is a simple reference flow that pulls code directly from GitHub:
 
 ```powershell
 # Clone this repo (or fork it first)
@@ -181,10 +186,15 @@ cd badge-gif-generator
     -GithubBranch "main"
 ```
 
-**GitHub Repository Requirements:**
+**Repository Intent:**
 - Repository must be **public** (or use a PAT for private repos)
 - No secrets are stored in code - all sensitive values are passed at deploy time
 - Badge images in `assets/badges/` will seed the storage account automatically
+
+**End-user Responsibility:**
+- Decide how certificates are issued and renewed
+- Decide whether to use direct public IP, Application Gateway, Azure Front Door, or another ingress layer
+- Configure DNS, public endpoints, WAF, IP restrictions, authentication, and access-control policy to match your own environment
 
 **To update deployed code:**
 ```bash
@@ -230,10 +240,9 @@ The deployed VM includes:
 | Component | Description |
 |-----------|-------------|
 | **Ubuntu 22.04 LTS** | Base OS |
-| **nginx** | Reverse proxy, static file serving, HTTPS termination |
+| **nginx** | Reverse proxy and static file serving |
 | **uvicorn** | ASGI server running FastAPI on port 8000 |
-| **certbot** | Let's Encrypt certificate automation |
-| **systemd** | Service management (badge-gif-generator.service) |
+| **systemd** | Service management for the application process |
 | **Managed Identity** | Secure access to Azure Storage (no keys stored) |
 
 ### SSH Access

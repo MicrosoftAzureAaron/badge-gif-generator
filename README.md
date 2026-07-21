@@ -1,6 +1,6 @@
 # Badge GIF Generator
 
-Create animated GIF slideshows from your certification badges and logos. Choose between an **Azure VM deployment** or a fully **offline local version**.
+Create animated GIF slideshows from your certification badges and logos. This repository stores the application code plus a simple deployment flow that the maintainer uses when adding new badges. It is not a prescriptive reference architecture for end-user Azure hosting.
 
 ![Badge GIF Example](docs/example.gif)
 
@@ -12,6 +12,13 @@ Create animated GIF slideshows from your certification badges and logos. Choose 
 - **Transparent Background Support** - Perfect for presentations
 - **Live Preview** - See your GIF before downloading
 - **Multi-Badge Frames** - Group multiple badges per frame
+
+## Scope
+
+- This repository is primarily the source for the badge GIF application code.
+- The included Azure VM deployment is a simple maintainer workflow for publishing updates after new badges are added.
+- Certificates, domain names, public IPs, access control, Application Gateway, Azure Front Door, and broader production networking decisions are intentionally left to the end user.
+- End users should adapt the app to their own security, DNS, ingress, and certificate-management standards.
 
 ## 📁 Repository Structure
 
@@ -49,7 +56,7 @@ Then open http://localhost:5000
 
 ### Option 2: Azure VM Deployment
 
-Deploy to Azure with persistent badge storage and HTTPS:
+Use the maintainer's simple Azure VM deployment as a reference starting point:
 
 ```powershell
 cd azure-vm
@@ -78,10 +85,10 @@ cd azure-vm
 |---------|-------------|----------|
 | **Hosting** | Local machine | Azure Linux VM |
 | **Badge Storage** | Local folders | Azure Blob Storage |
-| **HTTPS** | No | Yes (Let's Encrypt) |
+| **HTTPS** | No | End-user choice |
 | **Persistent** | No | Yes |
 | **Cost** | Free | ~$15-30/month |
-| **Best For** | Personal use, demos | Team/public access |
+| **Best For** | Personal use, demos | Maintainer reference deployment |
 
 ## 🤝 Contributing
 
