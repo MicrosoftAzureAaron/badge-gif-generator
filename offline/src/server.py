@@ -66,6 +66,24 @@ def list_local_assets(folder: Path, asset_type: str) -> List[dict]:
             filename_only = item.name
         
         base_name = item.stem
+
+        if not category:
+            lower_stem = base_name.lower()
+            if lower_stem.startswith(("azure-", "azure")):
+                category = "azure"
+            elif lower_stem.startswith(("aws-", "aws")):
+                category = "aws"
+            elif lower_stem.startswith(("cisco-", "cisco")):
+                category = "cisco"
+            elif lower_stem.startswith(("comptia-", "comptia")):
+                category = "comptia"
+            elif lower_stem.startswith(("google-", "google")):
+                category = "google"
+            elif lower_stem.startswith(("itil-", "itil")):
+                category = "itil"
+            elif lower_stem.startswith(("microsoft-", "microsoft", "security-")):
+                category = "microsoft"
+
         display_name = base_name.replace("-", " ").replace("_", " ").title()
         tags = [t.lower() for t in base_name.replace("-", " ").replace("_", " ").split()]
         
@@ -75,7 +93,7 @@ def list_local_assets(folder: Path, asset_type: str) -> List[dict]:
             tags.extend(["badge", "certification"])
         
         if category:
-            tags.append(category)
+            tags.append(category.lower())
         
         # Use forward slashes in filename for consistency
         filename = str(rel_path).replace("\\", "/")

@@ -267,6 +267,24 @@ def list_assets_from_container(container_name: str, asset_type: str) -> List[Dic
                 category = None
             
             base_name = item.stem
+
+            if not category:
+                lower_stem = base_name.lower()
+                if lower_stem.startswith(("azure-", "azure")):
+                    category = "azure"
+                elif lower_stem.startswith(("aws-", "aws")):
+                    category = "aws"
+                elif lower_stem.startswith(("cisco-", "cisco")):
+                    category = "cisco"
+                elif lower_stem.startswith(("comptia-", "comptia")):
+                    category = "comptia"
+                elif lower_stem.startswith(("google-", "google")):
+                    category = "google"
+                elif lower_stem.startswith(("itil-", "itil")):
+                    category = "itil"
+                elif lower_stem.startswith(("microsoft-", "microsoft", "security-")):
+                    category = "microsoft"
+
             display_name = base_name.replace("-", " ").replace("_", " ").title()
             tags = [t.lower() for t in base_name.replace("-", " ").replace("_", " ").split()]
 
@@ -276,7 +294,7 @@ def list_assets_from_container(container_name: str, asset_type: str) -> List[Dic
                 tags.extend(["badge", "certification"])
             
             if category:
-                tags.append(category)
+                tags.append(category.lower())
 
             filename_rel = str(rel_path).replace("\\", "/")
             asset = {
@@ -366,13 +384,22 @@ def download_blob(container_name: str, blob_name: str) -> bytes:
     Reads from local VM assets first, falling back to Azure Blob Storage if configured.
     """
     blob_name = sanitize_blob_path(blob_name)
-    folder_name = "badges" if container_name == BADGES_CONTAINER else "logos"
+    folder_name = "badges" if container_name == BADGES_CONTAINER or container_name == "badges" else "logos"
     local_path = LOCAL_ASSETS_DIR / folder_name / blob_name
 
     if local_path.exists() and local_path.is_file():
         logger.debug(f"Reading local asset file: {local_path}")
         return local_path.read_bytes()
     
+    # Fallback: search by filename inside local folder if relative path structure differs
+    local_folder = LOCAL_ASSETS_DIR / folder_name
+    if local_folder.exists() and local_folder.is_dir():
+        file_name = Path(blob_name).name
+        for item in local_folder.rglob(file_name):
+            if item.is_file():
+                logger.debug(f"Reading local asset file via rglob fallback: {item}")
+                return item.read_bytes()
+
     try:
         logger.debug(f"Downloading blob {blob_name} from {container_name}")
         blob_service = get_blob_service_client()
