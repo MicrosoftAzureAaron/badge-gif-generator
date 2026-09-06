@@ -16,28 +16,40 @@ param adminUsername string = 'azureuser'
 param sshPublicKey string
 
 @description('VM size')
-param vmSize string = 'Standard_B2s'
+param vmSize string = 'Standard_D2s_v5'
 
 @description('Email for Let\'s Encrypt certificate registration')
 param certEmail string = ''
 
-@description('Create a new storage account and private endpoint, or use an existing one')
-param createStorageAccount bool = true
+@description('Create a new storage account and private endpoint (default: false, uses GitHub repo local storage)')
+param createStorageAccount bool = false
 
-@description('Existing storage account name (required if createStorageAccount is false)')
+@description('Existing storage account name (required if createStorageAccount is true)')
 param existingStorageAccountName string = ''
 
-@description('Resource group containing the existing storage account (required if createStorageAccount is false)')
+@description('Resource group containing the existing storage account (required if createStorageAccount is true)')
 param existingStorageResourceGroup string = ''
 
-@description('Primary VNet resource ID for peering (required if createStorageAccount is false)')
+@description('Primary VNet resource ID for peering (required if createStorageAccount is true)')
 param primaryVNetId string = ''
 
-@description('GitHub repository URL for application code')
+@description('GitHub repository URL for application code and persistent assets')
 param githubRepo string = 'https://github.com/MicrosoftAzureAaron/badge-gif-generator.git'
 
 @description('GitHub branch to deploy from')
 param githubBranch string = 'main'
+
+@description('Resource tags for subscription cleanup automation compliance')
+param tags object = {
+  cleanupPolicy: 'Delete'
+  cleanupScope: 'ResourceGroup'
+  costProfile: 'ephemeral'
+  deleteAfterUtc: '2026-09-06T23:59:59Z'
+  deployedAtUtc: utcNow()
+  environment: 'lab'
+  owner: 'aarosanders@microsoft.com'
+  solution: 'BadgeGIFGenerator'
+}
 
 // Variables
 var newStorageAccountName = take(toLower(replace('st${baseName}${uniqueString(resourceGroup().id)}', '-', '')), 24)
@@ -56,6 +68,7 @@ var privateDnsZoneName = 'privatelink.blob.${az.environment().suffixes.storage}'
 resource nsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {
   name: nsgName
   location: location
+  tags: tags
   properties: {
     securityRules: [
       {
@@ -105,6 +118,7 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {
 resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
   name: vnetName
   location: location
+  tags: tags
   properties: {
     addressSpace: {
       addressPrefixes: [
@@ -136,13 +150,14 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
 resource publicIp 'Microsoft.Network/publicIPAddresses@2023-05-01' = {
   name: publicIpName
   location: location
+  tags: tags
   sku: {
     name: 'Standard'
   }
   properties: {
     publicIPAllocationMethod: 'Static'
     dnsSettings: {
-      domainNameLabel: toLower(baseName)
+      domainNameLabel: take(toLower('${baseName}-${uniqueString(resourceGroup().id)}'), 63)
     }
   }
 }
@@ -151,6 +166,7 @@ resource publicIp 'Microsoft.Network/publicIPAddresses@2023-05-01' = {
 resource nic 'Microsoft.Network/networkInterfaces@2023-05-01' = {
   name: nicName
   location: location
+  tags: tags
   properties: {
     ipConfigurations: [
       {
@@ -311,6 +327,7 @@ module dnsZoneLink 'dns-zone-link.bicep' = if (!createStorageAccount && !empty(e
 resource vm 'Microsoft.Compute/virtualMachines@2023-07-01' = {
   name: vmName
   location: location
+  tags: tags
   properties: {
     hardwareProfile: {
       vmSize: vmSize

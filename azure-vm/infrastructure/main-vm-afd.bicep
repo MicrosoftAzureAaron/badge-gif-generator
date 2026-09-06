@@ -20,19 +20,31 @@ param adminUsername string = 'azureuser'
 param sshPublicKey string
 
 @description('VM size')
-param vmSize string = 'Standard_B2s'
+param vmSize string = 'Standard_D2s_v5'
 
-@description('Create a new storage account with private endpoint')
-param createStorageAccount bool = true
+@description('Create a new storage account with private endpoint (default: false, uses GitHub repo local storage)')
+param createStorageAccount bool = false
 
 @description('Existing storage account name (if createStorageAccount = false)')
 param existingStorageAccountName string = ''
 
-@description('GitHub repository URL for application code')
+@description('GitHub repository URL for application code and persistent assets')
 param githubRepo string = 'https://github.com/MicrosoftAzureAaron/badge-gif-generator.git'
 
 @description('GitHub branch to deploy from')
 param githubBranch string = 'main'
+
+@description('Resource tags for subscription cleanup automation compliance')
+param tags object = {
+  cleanupPolicy: 'Delete'
+  cleanupScope: 'ResourceGroup'
+  costProfile: 'ephemeral'
+  deleteAfterUtc: '2026-09-06T23:59:59Z'
+  deployedAtUtc: utcNow()
+  environment: 'lab'
+  owner: 'aarosanders@microsoft.com'
+  solution: 'BadgeGIFGenerator'
+}
 
 // AFD Integration Parameters
 @description('ID of Layer7 main VNET for peering (required)')
@@ -78,6 +90,7 @@ var peSubnetPrefix = '10.30.2.0/24'
 resource nsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {
   name: nsgName
   location: location
+  tags: tags
   properties: {
     securityRules: [
       {
@@ -158,6 +171,7 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {
 resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
   name: vnetName
   location: location
+  tags: tags
   properties: {
     addressSpace: {
       addressPrefixes: [
@@ -193,6 +207,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
 resource routeTable 'Microsoft.Network/routeTables@2023-05-01' = {
   name: routeTableName
   location: location
+  tags: tags
   properties: {
     routes: []
   }
@@ -224,6 +239,7 @@ resource remoteNetworkRoute2 'Microsoft.Network/routeTables/routes@2023-05-01' =
 resource nic 'Microsoft.Network/networkInterfaces@2023-05-01' = {
   name: nicName
   location: location
+  tags: tags
   properties: {
     ipConfigurations: [
       {
@@ -244,6 +260,7 @@ resource nic 'Microsoft.Network/networkInterfaces@2023-05-01' = {
 resource vm 'Microsoft.Compute/virtualMachines@2023-03-01' = {
   name: vmName
   location: location
+  tags: tags
   identity: {
     type: 'SystemAssigned'
   }
@@ -293,6 +310,14 @@ resource vm 'Microsoft.Compute/virtualMachines@2023-03-01' = {
   }
 }
 
+// =================================================================================
+// OPTIONAL AZURE STORAGE ACCOUNT & PRIVATE ENDPOINT RESOURCES
+// Note: Persistent assets (badges and logos) are stored directly in the GitHub repository
+// and downloaded onto the VM during setup ($REPO_DIR/azure-vm/assets -> /opt/badge-gif-generator/assets).
+// By default, createStorageAccount = false and local VM storage is used.
+// If isolated Azure Blob Storage with Private Endpoint is desired instead, set createStorageAccount = true.
+// =================================================================================
+
 // Role Assignment for VM managed identity to read storage
 resource storageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (createStorageAccount) {
   scope: storageAccount
@@ -304,10 +329,11 @@ resource storageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-
   }
 }
 
-// Storage Account
+// Storage Account (Optional)
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = if (createStorageAccount) {
   name: storageAccountName
   location: location
+  tags: tags
   kind: 'StorageV2'
   sku: {
     name: 'Standard_LRS'
@@ -343,10 +369,11 @@ resource logosContainer 'Microsoft.Storage/storageAccounts/blobServices/containe
   ]
 }
 
-// Private DNS Zone for Storage Account
+// Private DNS Zone for Storage Account (Optional)
 resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (createStorageAccount) {
   name: privateDnsZoneName
   location: 'global'
+  tags: tags
 }
 
 // Private DNS Zone Link to Badge VM VNet
@@ -354,6 +381,7 @@ resource privateDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLin
   parent: privateDnsZone
   name: '${vnet.name}-link'
   location: 'global'
+  tags: tags
   properties: {
     registrationEnabled: false
     virtualNetwork: {
@@ -362,10 +390,11 @@ resource privateDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLin
   }
 }
 
-// Private Endpoint for Storage Account
+// Private Endpoint for Storage Account (Optional)
 resource privateEndpoint 'Microsoft.Network/privateEndpoints@2023-05-01' = if (createStorageAccount) {
   name: privateEndpointName
   location: location
+  tags: tags
   properties: {
     subnet: {
       id: '${vnet.id}/subnets/${privateEndpointSubnetName}'

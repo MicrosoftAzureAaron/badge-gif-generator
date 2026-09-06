@@ -1,5 +1,6 @@
 # Badge GIF Generator - VM Deployment Script
-# Deploys a Linux VM with Azure Front Door / Layer7 VNet integration, WireGuard routing, and private storage endpoint
+# Deploys a Linux VM with Public IP and connects Azure Front Door directly to the VM.
+# Assets are persistently stored in GitHub and loaded directly onto the local VM.
 
 param(
     [Parameter(Mandatory=$false)]
@@ -9,37 +10,22 @@ param(
     [string]$Location = "eastus2",
     
     [Parameter(Mandatory=$false)]
-    [string]$SshKeyPath = "$env:USERPROFILE\.ssh\id_ed25519.pub",
+    [string]$SshKeyPath = "$env:USERPROFILE\.ssh\id_rsa.pub",
     
     [Parameter(Mandatory=$false)]
-    [string]$CertEmail = "",
+    [bool]$CreateStorageAccount = $false,
     
     [Parameter(Mandatory=$false)]
-    [string]$ExistingStorageAccountName = "",
-    
-    [Parameter(Mandatory=$false)]
-    [string]$ExistingStorageResourceGroup = "",
-    
-    [Parameter(Mandatory=$false)]
-    [string]$Layer7VnetId = "/subscriptions/93737354-fb93-4823-949a-71c853b20439/resourceGroups/layer7lab/providers/Microsoft.Network/virtualNetworks/hightechlife-lab-vnet",
+    [string]$AfdResourceGroup = "layer7lab",
 
     [Parameter(Mandatory=$false)]
-    [string]$Layer7VnetName = "hightechlife-lab-vnet",
+    [string]$AfdProfileName = "hightechlife-lab-afd",
 
     [Parameter(Mandatory=$false)]
-    [string]$Layer7BackendSubnetId = "/subscriptions/93737354-fb93-4823-949a-71c853b20439/resourceGroups/layer7lab/providers/Microsoft.Network/virtualNetworks/hightechlife-lab-vnet/subnets/backend-subnet",
+    [string]$AfdOriginGroupName = "badge-og",
 
     [Parameter(Mandatory=$false)]
-    [string]$Layer7ResourceGroup = "layer7lab",
-
-    [Parameter(Mandatory=$false)]
-    [string]$WireGuardNvaIp = "100.127.0.4",
-
-    [Parameter(Mandatory=$false)]
-    [string]$RemoteNetworkPrefix = "192.168.50.0/24",
-
-    [Parameter(Mandatory=$false)]
-    [string]$RemoteNetworkPrefix2 = "192.168.30.0/24",
+    [string]$AfdOriginName = "badge-agw-origin",
 
     [Parameter(Mandatory=$false)]
     [string]$GithubRepo = "https://github.com/MicrosoftAzureAaron/badge-gif-generator.git",
@@ -50,20 +36,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Determine if we're creating storage or using existing
-$createStorage = [string]::IsNullOrEmpty($ExistingStorageAccountName)
-
 Write-Host "===============================================" -ForegroundColor Cyan
-Write-Host "Badge GIF Generator - VM Deployment (AFD/VPN)" -ForegroundColor Cyan
+Write-Host "Badge GIF Generator - VM Deployment" -ForegroundColor Cyan
 Write-Host "===============================================" -ForegroundColor Cyan
 Write-Host "GitHub Repo: $GithubRepo" -ForegroundColor Cyan
 Write-Host "GitHub Branch: $GithubBranch" -ForegroundColor Cyan
-if (-not $createStorage) {
-    Write-Host "MODE: Secondary deployment (using existing storage)" -ForegroundColor Yellow
-    Write-Host "  Storage Account: $ExistingStorageAccountName" -ForegroundColor Yellow
-} else {
-    Write-Host "MODE: Primary deployment (creating new storage)" -ForegroundColor Green
-}
+Write-Host "Storage Mode: GitHub Local VM Storage (CreateStorageAccount=$CreateStorageAccount)" -ForegroundColor Green
 Write-Host ""
 
 # Check Azure CLI
@@ -84,46 +62,37 @@ if ($LASTEXITCODE -ne 0) {
     $accountInfo = az account show | ConvertFrom-Json
 }
 
-# Get email from Azure account if not provided
-if ([string]::IsNullOrEmpty($CertEmail)) {
-    $CertEmail = $accountInfo.user.name
-    Write-Host "Using email from Azure subscription: $CertEmail" -ForegroundColor Green
-}
-
 # Check for SSH key
 Write-Host ""
 Write-Host "Checking SSH key..." -ForegroundColor Yellow
 if (-not (Test-Path $SshKeyPath)) {
-    $rsaPath = "$env:USERPROFILE\.ssh\id_rsa.pub"
-    if (Test-Path $rsaPath) {
-        $SshKeyPath = $rsaPath
+    $edPath = "$env:USERPROFILE\.ssh\id_ed25519.pub"
+    if (Test-Path $edPath) {
+        $SshKeyPath = $edPath
     } else {
         Write-Host "SSH key not found at $SshKeyPath" -ForegroundColor Yellow
-        Write-Host "Generating new ED25519 SSH key pair..." -ForegroundColor Yellow
-        ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\id_ed25519" -N '""'
-        $SshKeyPath = "$env:USERPROFILE\.ssh\id_ed25519.pub"
+        Write-Host "Generating new RSA SSH key pair..." -ForegroundColor Yellow
+        ssh-keygen -t rsa -b 4096 -f "$env:USERPROFILE\.ssh\id_rsa" -N '""'
+        $SshKeyPath = "$env:USERPROFILE\.ssh\id_rsa.pub"
     }
 }
 
 $sshPublicKey = (Get-Content $SshKeyPath -Raw).Trim()
 Write-Host "Using SSH public key from: $SshKeyPath" -ForegroundColor Green
 
-# Create resource group
+# Create resource group with autodeletion cleanup tags
 Write-Host ""
-Write-Host "Creating resource group: $ResourceGroupName in $Location" -ForegroundColor Yellow
-az group create --name $ResourceGroupName --location $Location --output none
+Write-Host "Creating resource group: $ResourceGroupName in $Location with autodeletion cleanup tags..." -ForegroundColor Yellow
+az group create --name $ResourceGroupName --location $Location `
+    --tags cleanupPolicy="Delete" cleanupScope="ResourceGroup" costProfile="ephemeral" deleteAfterUtc="2026-09-06T23:59:59Z" environment="lab" owner="aarosanders@microsoft.com" solution="BadgeGIFGenerator" `
+    --output none
 
 # Deploy infrastructure
 Write-Host ""
-Write-Host "Deploying VM infrastructure (this may take 5-10 minutes)..." -ForegroundColor Yellow
-if (-not $createStorage) {
-    Write-Host "Storage: Using existing ($ExistingStorageAccountName)" -ForegroundColor Cyan
-} else {
-    Write-Host "Storage: Creating new storage account" -ForegroundColor Cyan
-}
+Write-Host "Deploying VM infrastructure (this may take 3-5 minutes)..." -ForegroundColor Yellow
 
 $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
-$templatePath = Join-Path $scriptDir "infrastructure\main-vm-afd.bicep"
+$templatePath = Join-Path $scriptDir "infrastructure\main-vm.bicep"
 
 $deploymentOutput = az deployment group create `
     --resource-group $ResourceGroupName `
@@ -132,12 +101,7 @@ $deploymentOutput = az deployment group create `
     --parameters location="$Location" `
     --parameters adminUsername="azureuser" `
     --parameters sshPublicKey="$sshPublicKey" `
-    --parameters createStorageAccount=$($createStorage.ToString().ToLower()) `
-    --parameters existingStorageAccountName="$ExistingStorageAccountName" `
-    --parameters layer7VnetId="$Layer7VnetId" `
-    --parameters wireGuardNvaIp="$WireGuardNvaIp" `
-    --parameters remoteNetworkPrefix="$RemoteNetworkPrefix" `
-    --parameters remoteNetworkPrefix2="$RemoteNetworkPrefix2" `
+    --parameters createStorageAccount=$($CreateStorageAccount.ToString().ToLower()) `
     --parameters githubRepo="$GithubRepo" `
     --parameters githubBranch="$GithubBranch" `
     --query "properties.outputs" `
@@ -148,15 +112,11 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-$vmPrivateIp = $deploymentOutput.badgeVmPrivateIp.value
-$vmName = $deploymentOutput.badgeVmName.value
-$storageAccountName = $deploymentOutput.storageAccountName.value
-$vnetId = $deploymentOutput.vnetId.value
-
-Write-Host ""
-Write-Host "Setting up reciprocal VNet peerings between WireGuardNVA and Badge VM VNet..." -ForegroundColor Yellow
-az network vnet peering create --resource-group WireGuardNVA --vnet-name WGNVA --name WGNVA-to-badgegifgen --remote-vnet "$vnetId" --allow-vnet-access --allow-forwarded-traffic --output none 2>&1 | Out-Null
-az network vnet peering create --resource-group $ResourceGroupName --vnet-name "vnet-badgegifgen" --name badgegifgen-to-WGNVA --remote-vnet "/subscriptions/93737354-fb93-4823-949a-71c853b20439/resourceGroups/WireGuardNVA/providers/Microsoft.Network/virtualNetworks/WGNVA" --allow-vnet-access --allow-forwarded-traffic --output none 2>&1 | Out-Null
+$vmPublicIp = $deploymentOutput.vmPublicIp.value
+$vmFqdn = $deploymentOutput.vmFqdn.value
+$vmName = $deploymentOutput.vmName.value
+$sshCommand = $deploymentOutput.sshCommand.value
+$websiteUrl = $deploymentOutput.websiteUrl.value
 
 Write-Host ""
 Write-Host "===============================================" -ForegroundColor Green
@@ -165,21 +125,46 @@ Write-Host "===============================================" -ForegroundColor Gr
 Write-Host ""
 Write-Host "Resources:" -ForegroundColor Cyan
 Write-Host "  VM Name: $vmName"
-Write-Host "  VM Private IP: $vmPrivateIp"
-Write-Host "  Storage Account: $storageAccountName"
+Write-Host "  VM Public IP: $vmPublicIp"
+Write-Host "  VM FQDN: $vmFqdn"
 Write-Host ""
-Write-Host "SSH Access via WireGuard VPN:" -ForegroundColor Cyan
-Write-Host "  ssh azureuser@$vmPrivateIp"
-Write-Host ""
+Write-Host "Updating Azure Front Door origin to point directly to VM FQDN ($vmFqdn)..." -ForegroundColor Yellow
+az afd origin update `
+    --resource-group $AfdResourceGroup `
+    --profile-name $AfdProfileName `
+    --origin-group-name $AfdOriginGroupName `
+    --origin-name $AfdOriginName `
+    --host-name "$vmFqdn" `
+    --origin-host-header "$vmFqdn" `
+    --http-port 80 `
+    --https-port 443 `
+    --enabled-state Enabled `
+    --output none 2>&1 | Out-Null
 
-# Wait for VM to be ready
-Write-Host "Waiting for VM setup to finish and seed storage account (60 seconds)..." -ForegroundColor Yellow
-Start-Sleep -Seconds 60
+Write-Host "Azure Front Door origin updated successfully!" -ForegroundColor Green
+
+# Wait for VM setup to complete
+Write-Host ""
+Write-Host "Waiting for VM setup script to clone GitHub repo and start services (45 seconds)..." -ForegroundColor Yellow
+Start-Sleep -Seconds 45
 
 Write-Host ""
 Write-Host "===============================================" -ForegroundColor Green
 Write-Host "Deployment Complete!" -ForegroundColor Green
 Write-Host "===============================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "Direct VM Access:" -ForegroundColor Cyan
+Write-Host "  HTTP:  $websiteUrl"
+Write-Host "  SSH:   $sshCommand"
+Write-Host ""
+Write-Host "Public Domain via Azure Front Door:" -ForegroundColor Cyan
+Write-Host "  https://badge.hightechlife.net" -ForegroundColor White
+Write-Host ""
+Write-Host "===============================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "Direct VM Access:" -ForegroundColor Cyan
+Write-Host "  HTTP:  $websiteUrl"
+Write-Host "  SSH:   $sshCommand"
 Write-Host ""
 Write-Host "Public Domain via Azure Front Door:" -ForegroundColor Cyan
 Write-Host "  https://badge.hightechlife.net" -ForegroundColor White

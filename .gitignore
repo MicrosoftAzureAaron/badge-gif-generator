@@ -66,3 +66,4 @@ WIREGUARD_REDEPLOYMENT.md
 temp_b64.txt
 azure-vm/infrastructure/main-vm-afd.bicepparam
 azure-vm/infrastructure/main-vm-afd.json
+azure-vm/infrastructure/main-vm.json
