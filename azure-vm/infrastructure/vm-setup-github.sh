@@ -186,60 +186,46 @@ sleep 5
 
 # Seed storage account with badges from repo if needed
 echo "Checking if storage needs to be seeded..."
-if [ -n "$STORAGE_ACCOUNT_NAME" ] && [ -d "$REPO_DIR/assets/badges" ]; then
-    echo "Seeding storage account with badges from repository..."
+if [ -n "$STORAGE_ACCOUNT_NAME" ]; then
+    echo "Seeding/updating storage account with badges and logos from repository..."
     
     # Use managed identity to authenticate
-    az login --identity --allow-no-subscriptions
+    az login --identity --allow-no-subscriptions || true
     
-    # Check if badges container exists and has content
-    BADGE_COUNT=$(az storage blob list \
+    # Create containers if they don't exist
+    az storage container create \
         --account-name "$STORAGE_ACCOUNT_NAME" \
-        --container-name "ms-badges" \
-        --auth-mode login \
-        --query "length(@)" \
-        --output tsv 2>/dev/null || echo "0")
+        --name "ms-badges" \
+        --auth-mode login 2>/dev/null || true
     
-    if [ "$BADGE_COUNT" = "0" ] || [ -z "$BADGE_COUNT" ]; then
-        echo "Storage is empty, uploading badges from repository..."
-        
-        # Create containers if they don't exist
-        az storage container create \
+    az storage container create \
+        --account-name "$STORAGE_ACCOUNT_NAME" \
+        --name "ms-logos" \
+        --auth-mode login 2>/dev/null || true
+    
+    # Upload badges from azure-vm/assets/badges
+    if [ -d "$REPO_DIR/azure-vm/assets/badges" ] && [ "$(ls -A $REPO_DIR/azure-vm/assets/badges)" ]; then
+        echo "Uploading badges from $REPO_DIR/azure-vm/assets/badges..."
+        az storage blob upload-batch \
             --account-name "$STORAGE_ACCOUNT_NAME" \
-            --name "ms-badges" \
-            --auth-mode login 2>/dev/null || true
-        
-        az storage container create \
-            --account-name "$STORAGE_ACCOUNT_NAME" \
-            --name "ms-logos" \
-            --auth-mode login 2>/dev/null || true
-        
-        # Upload badges
-        if [ -d "$REPO_DIR/assets/badges" ] && [ "$(ls -A $REPO_DIR/assets/badges)" ]; then
-            echo "Uploading badges..."
-            az storage blob upload-batch \
-                --account-name "$STORAGE_ACCOUNT_NAME" \
-                --destination "ms-badges" \
-                --source "$REPO_DIR/assets/badges" \
-                --auth-mode login \
-                --overwrite false 2>/dev/null || true
-        fi
-        
-        # Upload logos
-        if [ -d "$REPO_DIR/assets/logos" ] && [ "$(ls -A $REPO_DIR/assets/logos)" ]; then
-            echo "Uploading logos..."
-            az storage blob upload-batch \
-                --account-name "$STORAGE_ACCOUNT_NAME" \
-                --destination "ms-logos" \
-                --source "$REPO_DIR/assets/logos" \
-                --auth-mode login \
-                --overwrite false 2>/dev/null || true
-        fi
-        
-        echo "Storage seeding complete!"
-    else
-        echo "Storage already has $BADGE_COUNT badges, skipping seed."
+            --destination "ms-badges" \
+            --source "$REPO_DIR/azure-vm/assets/badges" \
+            --auth-mode login \
+            --overwrite true 2>/dev/null || true
     fi
+    
+    # Upload logos from azure-vm/assets/logos
+    if [ -d "$REPO_DIR/azure-vm/assets/logos" ] && [ "$(ls -A $REPO_DIR/azure-vm/assets/logos)" ]; then
+        echo "Uploading logos from $REPO_DIR/azure-vm/assets/logos..."
+        az storage blob upload-batch \
+            --account-name "$STORAGE_ACCOUNT_NAME" \
+            --destination "ms-logos" \
+            --source "$REPO_DIR/azure-vm/assets/logos" \
+            --auth-mode login \
+            --overwrite true 2>/dev/null || true
+    fi
+    
+    echo "Storage seeding complete!"
 fi
 
 # Setup HTTPS with Let's Encrypt

@@ -380,7 +380,7 @@ module secondaryRoleAssignment 'storage-role-assignment.bicep' = if (!createStor
 
 // Custom Script Extension to setup the VM
 var setupScriptContent = loadTextContent('vm-setup-github.sh')
-var setupScriptWithEnv = 'export CERT_EMAIL="${certEmail}"\nexport CERT_DOMAIN="${publicIp.properties.dnsSettings.fqdn}"\nexport STORAGE_ACCOUNT_NAME="${storageAccountName}"\nexport GITHUB_REPO="${githubRepo}"\nexport GITHUB_BRANCH="${githubBranch}"\n${setupScriptContent}'
+var setupScriptWithEnv = '#!/bin/bash\nexport CERT_EMAIL="${certEmail}"\nexport CERT_DOMAIN="${publicIp.properties.dnsSettings.fqdn}"\nexport STORAGE_ACCOUNT_NAME="${storageAccountName}"\nexport GITHUB_REPO="${githubRepo}"\nexport GITHUB_BRANCH="${githubBranch}"\n${setupScriptContent}'
 
 resource vmExtension 'Microsoft.Compute/virtualMachines/extensions@2023-07-01' = {
   parent: vm

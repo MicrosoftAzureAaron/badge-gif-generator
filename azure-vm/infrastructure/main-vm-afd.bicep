@@ -22,17 +22,11 @@ param sshPublicKey string
 @description('VM size')
 param vmSize string = 'Standard_B2s'
 
-@description('Email for Lets Encrypt certificate registration')
-param certEmail string = ''
-
 @description('Create a new storage account with private endpoint')
 param createStorageAccount bool = true
 
 @description('Existing storage account name (if createStorageAccount = false)')
 param existingStorageAccountName string = ''
-
-@description('Resource group containing the existing storage account')
-param existingStorageResourceGroup string = ''
 
 @description('GitHub repository URL for application code')
 param githubRepo string = 'https://github.com/MicrosoftAzureAaron/badge-gif-generator.git'
@@ -43,18 +37,6 @@ param githubBranch string = 'main'
 // AFD Integration Parameters
 @description('ID of Layer7 main VNET for peering (required)')
 param layer7VnetId string
-
-@description('Layer7 main VNET name (required)')
-param layer7VnetName string
-
-@description('ID of Layer7 backend subnet for peering')
-param layer7BackendSubnetId string
-
-@description('Layer7 resource group name (required)')
-param layer7ResourceGroup string
-
-@description('Application Gateway backend pool name to register Badge VM')
-param appGatewayBackendPoolName string = 'badge-pool'
 
 @description('WireGuard NVA IP address for routing return traffic')
 param wireGuardNvaIp string = ''
@@ -256,9 +238,6 @@ resource nic 'Microsoft.Network/networkInterfaces@2023-05-01' = {
       }
     ]
   }
-  dependsOn: [
-    vnet
-  ]
 }
 
 // Linux VM
