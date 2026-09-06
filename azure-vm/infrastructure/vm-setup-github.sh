@@ -37,11 +37,17 @@ echo "Updating system packages..."
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
 
+# Enable universe and multiverse repositories if needed
+DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common
+add-apt-repository -y universe
+add-apt-repository -y multiverse
+apt-get update
+
 # Install dependencies
 echo "Installing dependencies..."
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    python3.11 \
-    python3.11-venv \
+    python3 \
+    python3-venv \
     python3-pip \
     nginx \
     git \
@@ -75,16 +81,21 @@ echo "Setting up application directory: $APP_DIR"
 mkdir -p $APP_DIR/api
 mkdir -p $APP_DIR/frontend
 mkdir -p $APP_DIR/shared
+mkdir -p $APP_DIR/assets/badges
+mkdir -p $APP_DIR/assets/logos
 
-# Copy application files from repo
-echo "Copying application files..."
+# Copy application files and persistent GitHub assets from repo
+echo "Copying application files and assets from GitHub repository..."
 cp -r $REPO_DIR/azure-vm/api/* $APP_DIR/api/
 cp -r $REPO_DIR/shared/frontend/* $APP_DIR/frontend/
 cp -r $REPO_DIR/shared/*.py $APP_DIR/shared/
+if [ -d "$REPO_DIR/azure-vm/assets" ]; then
+    cp -r $REPO_DIR/azure-vm/assets/* $APP_DIR/assets/
+fi
 
 # Create Python virtual environment
 echo "Creating Python virtual environment..."
-python3.11 -m venv $APP_DIR/venv
+python3 -m venv $APP_DIR/venv
 
 # Install Python packages
 echo "Installing Python packages..."
