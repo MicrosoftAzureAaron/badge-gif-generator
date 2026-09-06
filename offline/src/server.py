@@ -79,9 +79,13 @@ def list_local_assets(folder: Path, asset_type: str) -> List[dict]:
                 category = "comptia"
             elif lower_stem.startswith(("google-", "google")):
                 category = "google"
+            elif lower_stem.startswith(("kubernetes-", "k8s-", "cka", "ckad", "cks")):
+                category = "kubernetes"
+            elif lower_stem.startswith(("hashicorp-", "terraform")):
+                category = "hashicorp"
             elif lower_stem.startswith(("itil-", "itil")):
                 category = "itil"
-            elif lower_stem.startswith(("microsoft-", "microsoft", "security-")):
+            elif lower_stem.startswith(("microsoft-", "microsoft", "security-", "power-platform")):
                 category = "microsoft"
 
         display_name = base_name.replace("-", " ").replace("_", " ").title()

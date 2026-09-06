@@ -37,6 +37,8 @@ const BADGE_CATEGORY_CONFIG = {
     'google': { name: 'Google Cloud', icon: '🌐' },
     'cisco': { name: 'Cisco', icon: '🔧' },
     'comptia': { name: 'CompTIA', icon: '💻' },
+    'kubernetes': { name: 'Kubernetes', icon: '☸️' },
+    'hashicorp': { name: 'HashiCorp', icon: '🛠️' },
     'itil': { name: 'ITIL', icon: '📋' },
     'lpi': { name: 'LPI', icon: '🐧' },
     'other': { name: 'Other', icon: '📦' },
