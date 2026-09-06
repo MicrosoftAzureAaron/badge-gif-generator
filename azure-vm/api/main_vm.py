@@ -67,6 +67,7 @@ app.add_middleware(
 STORAGE_ACCOUNT_NAME = os.environ.get("STORAGE_ACCOUNT_NAME", "")
 LOGOS_CONTAINER = "ms-logos"
 BADGES_CONTAINER = "ms-badges"
+LOCAL_ASSETS_DIR = Path(__file__).parent.parent / "assets"
 
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"})
 
@@ -239,27 +240,69 @@ def get_blob_service_client() -> BlobServiceClient:
 
 def list_assets_from_container(container_name: str, asset_type: str) -> List[Dict[str, Any]]:
     """
-    List all image assets from a blob container.
+    List all image assets from local storage or blob container.
     
-    Retrieves blob metadata and organizes by category if present in folder structure.
+    Checks local VM asset directory first (downloaded from GitHub).
+    Organizes by category if present in folder structure.
     Returns structured asset data with search tags.
-    
-    Args:
-        container_name: Name of the blob container (e.g., 'ms-badges')
-        asset_type: Type of asset for tagging ('logo' or 'badge')
-        
-    Returns:
-        List of asset dictionaries with id, name, filename, type, tags, category, size
-        
-    Note:
-        Returns empty list on error rather than raising, allowing graceful degradation
     """
+    folder_name = "badges" if asset_type == "badge" or container_name == BADGES_CONTAINER else "logos"
+    local_folder = LOCAL_ASSETS_DIR / folder_name
+    
+    if local_folder.exists() and local_folder.is_dir():
+        logger.info(f"Listing {asset_type}s from local folder: {local_folder}")
+        assets = []
+        for item in local_folder.rglob("*"):
+            if not item.is_file():
+                continue
+            ext = item.suffix.lower()
+            if ext not in IMAGE_EXTENSIONS:
+                continue
+            
+            rel_path = item.relative_to(local_folder)
+            parts = rel_path.parts
+            if len(parts) > 1:
+                category = parts[0].lower()
+            else:
+                category = None
+            
+            base_name = item.stem
+            display_name = base_name.replace("-", " ").replace("_", " ").title()
+            tags = [t.lower() for t in base_name.replace("-", " ").replace("_", " ").split()]
+
+            if asset_type == "logo":
+                tags.append("logo")
+            elif asset_type == "badge":
+                tags.extend(["badge", "certification"])
+            
+            if category:
+                tags.append(category)
+
+            filename_rel = str(rel_path).replace("\\", "/")
+            asset = {
+                "id": base_name.lower().replace(" ", "-"),
+                "name": display_name,
+                "filename": filename_rel,
+                "type": asset_type,
+                "tags": list(set(tags)),
+                "url": f"/api/asset/{container_name}/{filename_rel}",
+                "size": item.stat().st_size
+            }
+            if category:
+                asset["category"] = category.title()
+            
+            assets.append(asset)
+
+        if assets:
+            logger.info(f"Listed {len(assets)} {asset_type}s from local storage")
+            return assets
+
     try:
         if not STORAGE_ACCOUNT_NAME:
-            logger.warning("STORAGE_ACCOUNT_NAME not configured, cannot list assets")
+            logger.warning("STORAGE_ACCOUNT_NAME not configured and no local assets found")
             return []
         
-        logger.info(f"Listing {asset_type}s from container {container_name}")
+        logger.info(f"Listing {asset_type}s from Azure container {container_name}")
         blob_service = get_blob_service_client()
         container_client = blob_service.get_container_client(container_name)
         assets = []
@@ -272,7 +315,6 @@ def list_assets_from_container(container_name: str, asset_type: str) -> List[Dic
                 logger.debug(f"Skipping {name}: unsupported extension {ext}")
                 continue
 
-            # Check if blob is in a subfolder (category/filename.ext)
             parts = name.split("/")
             if len(parts) > 1:
                 category = parts[0].lower()
@@ -285,13 +327,11 @@ def list_assets_from_container(container_name: str, asset_type: str) -> List[Dic
             display_name = base_name.replace("-", " ").replace("_", " ").title()
             tags = [t.lower() for t in base_name.replace("-", " ").replace("_", " ").split()]
 
-            # Add type-specific tags
             if asset_type == "logo":
                 tags.append("logo")
             elif asset_type == "badge":
                 tags.extend(["badge", "certification"])
             
-            # Add category to tags if present
             if category:
                 tags.append(category)
 
@@ -308,9 +348,8 @@ def list_assets_from_container(container_name: str, asset_type: str) -> List[Dic
                 asset["category"] = category.title()
             
             assets.append(asset)
-            logger.debug(f"Added asset: {display_name} ({blob.size} bytes)")
 
-        logger.info(f"Listed {len(assets)} {asset_type}s from {container_name}")
+        logger.info(f"Listed {len(assets)} {asset_type}s from Azure container {container_name}")
         return assets
     except AzureError as exc:
         logger.error(f"Azure error listing assets from {container_name}: {exc}")
@@ -322,20 +361,17 @@ def list_assets_from_container(container_name: str, asset_type: str) -> List[Dic
 
 def download_blob(container_name: str, blob_name: str) -> bytes:
     """
-    Download a blob's content as bytes.
+    Download or read asset content as bytes.
     
-    Args:
-        container_name: Name of the container
-        blob_name: Name/path of the blob within the container
-        
-    Returns:
-        Blob content as bytes
-        
-    Raises:
-        AzureError: If blob download fails
-        ValueError: If blob_name is empty or invalid
+    Reads from local VM assets first, falling back to Azure Blob Storage if configured.
     """
     blob_name = sanitize_blob_path(blob_name)
+    folder_name = "badges" if container_name == BADGES_CONTAINER else "logos"
+    local_path = LOCAL_ASSETS_DIR / folder_name / blob_name
+
+    if local_path.exists() and local_path.is_file():
+        logger.debug(f"Reading local asset file: {local_path}")
+        return local_path.read_bytes()
     
     try:
         logger.debug(f"Downloading blob {blob_name} from {container_name}")
@@ -347,9 +383,9 @@ def download_blob(container_name: str, blob_name: str) -> bytes:
         return content
     except AzureError as exc:
         logger.error(f"Failed to download blob {blob_name}: {exc}")
-        raise HTTPException(status_code=404, detail=f"Blob not found: {blob_name}") from exc
+        raise HTTPException(status_code=404, detail=f"Asset not found: {blob_name}") from exc
     except Exception as exc:
-        logger.error(f"Unexpected error downloading blob: {exc}")
+        logger.error(f"Unexpected error fetching asset {blob_name}: {exc}")
         raise
 
 
